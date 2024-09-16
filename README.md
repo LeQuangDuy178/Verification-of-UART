@@ -1,1 +1,1 @@
-# Verification of UART
+# Verification of UART Protocol
