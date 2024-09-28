@@ -3,7 +3,6 @@
 
 `timescale 1ns/1ps
 
-
 ////////////////////////////////////////////////
 // Data transaction class
 class transaction;
@@ -71,310 +70,374 @@ class generator;
         repeat(count) // Repeat operation within number of stimulies
         begin
             assert(trans.randomize) else $display("Randomization failed");
-            mbx.put(trans.copy); // Put deep copy of trans to send to DRV
-            $display("[GEN] : Operation : %0s : Din : %0d", trans.oper.name(), trans.din_tx);
-            @(drvnext); // Wait for drvnext event
-            @(sconext); // Wait for sconext event
-        end
-
-        -> done; // Trigger done event when all stimulies are applied
-
-    endtask
-
+            mbx.put(trans.copy)class transaction;
+  
+  typedef enum bit  {write = 1'b0 , read = 1'b1} oper_type;
+  
+  randc oper_type oper;
+  
+  bit rx;
+  
+  rand bit [7:0] dintx;
+  
+  bit newd;
+  bit tx;
+  
+  bit [7:0] doutrx;
+  bit donetx;
+  bit donerx;
+  
+ 
+  
+  function transaction copy();
+    copy = new();
+    copy.rx = this.rx;
+    copy.dintx = this.dintx;
+    copy.newd = this.newd;
+    copy.tx = this.tx;
+    copy.doutrx = this.doutrx;
+    copy.donetx = this.donetx;
+    copy.donerx = this.donerx;
+    copy.oper = this.oper;
+  endfunction
+  
 endclass
-
-/////////////////////////////////////////////////////////////////////////////
-// Class driver
+ 
+/////////////////////////////////////////////////
+            
+class generator;
+  
+ transaction tr;
+  
+  mailbox #(transaction) mbx;
+  
+  event done;
+  
+  int count = 0;
+  
+  event drvnext;
+  event sconext;
+  
+  
+  function new(mailbox #(transaction) mbx);
+    this.mbx = mbx;
+    tr = new();
+  endfunction
+  
+  
+  task run();
+  
+    repeat(count) begin
+      assert(tr.randomize) else $error("[GEN] :Randomization Failed");
+      mbx.put(tr.copy);
+      $display("[GEN]: Oper : %0s Din : %0d",tr.oper.name(), tr.dintx);
+      @(drvnext);
+      @(sconext);
+    end
+    
+    -> done;
+  endtask
+  
+endclass
+ 
+/////////////////////////////////////////////////////////
+ 
 class driver;
-
-    virtual uart_inf uart; // Interface object store data to send to DUT
-
-    transaction trans;
-
-    event drvnext; // Trigger drvnext to implement next stimuli from generator
-
-    bit [7:0] din;
-    bit write = 0; // urandom write/read operation
-    bit [7:0] data_rx; // Output of driver to send to DUT - array form
-
-    mailbox #(transaction) mbx_dtm; // Driver to monitor through DUT
-    mailbox #(bit [7:0]) mbx_dts; // Driver to scoreboard for referenced data to compare
-
-    function new(mailbox #(transaction) mbx_dtm, mailbox #(bit [7:0]) mbx_dts)
-        this.mbx_dtm = mbx_dtm;
-        this.mbx_dts = mbx_dts;
-    endfunction
-
-    task reset();
-        uart.rst <= 1'b1;
-        uart.din_tx <= 0;
-        uart.new_data <= 0;
-        uart.rx <= 1'b1;
-
-        repeat (5) @(posedge uart.uclk_tx) // Wait for 5 UART TX clk tick to disable rst
-        uart.rst <= 1'b0;
-        @(posedge uart.uclk_tx) // wait for one more
-        $display("[DRV]: RESET COMPLETED");
-        $display("-------------------------------------------------------");
-    endtask
-
-    task main();
-
-        forever // Everytime mailbox of trans data received from generator 
-        begin
-            mbx.get(trans);
-
-            // Configure data get from DIN of GEN for virtual interface then send to DUT ports
-            if (trans.oper == 1'b0) // Write data (transmitting data)
-            begin
-                @(posedge uart.uclk_tx) // sensitive for uart transmitting pin clk
-                uart.rst <= 1'b0;
-                uart.new_data <= 1'b1; // Start get new data
-                uart.rx <= 1'b1; // Ready to read data
-                uart.din_tx <= trans.din_tx; // Assign rand value of din_tx to uart interface
+  
+  virtual uart_if vif;
+  
+  transaction tr;
+  
+  mailbox #(transaction) mbx;
+  
+  mailbox #(bit [7:0]) mbxds;
+  
+  
+  event drvnext;
+  
+  bit [7:0] din;
+  
+  
+  bit wr = 0;  ///random operation read / write
+  bit [7:0] datarx;  ///data rcvd during read
+  
+  
+  function new(mailbox #(bit [7:0]) mbxds, mailbox #(transaction) mbx);
+    this.mbx = mbx;
+    this.mbxds = mbxds;
+   endfunction
+  
+  task reset();
+    vif.rst <= 1'b1;
+    vif.dintx <= 0;
+    vif.newd <= 0;
+    vif.rx <= 1'b1;
+ 
+    repeat(5) @(posedge vif.uclktx);
+    vif.rst <= 1'b0;
+    @(posedge vif.uclktx);
+    $display("[DRV] : RESET DONE");
+    $display("----------------------------------------");
+  endtask
+  
+  task run();
+  
+    forever begin
+      mbx.get(tr);
+      
+      if(tr.oper == 1'b0)  ////data transmission
+          begin
+          //           
+            @(posedge vif.uclktx);
+            vif.rst <= 1'b0;
+            vif.newd <= 1'b1;  ///start data sending op
+            vif.rx <= 1'b1;
+            vif.dintx = tr.dintx;
+            @(posedge vif.uclktx);
+            vif.newd <= 1'b0;
+              ////wait for completion 
+            //repeat(9) @(posedge vif.uclktx);
+            mbxds.put(tr.dintx);
+            $display("[DRV]: Data Sent : %0d", tr.dintx);
+             wait(vif.donetx == 1'b1);  
+             ->drvnext;  
+          end
+      
+      else if (tr.oper == 1'b1)
+               begin
+                 
+                 @(posedge vif.uclkrx);
+                  vif.rst <= 1'b0;
+                  vif.rx <= 1'b0;
+                  vif.newd <= 1'b0;
+                  @(posedge vif.uclkrx);
+                  
+                 for(int i=0; i<=7; i++) 
+                 begin   
+                      @(posedge vif.uclkrx);                
+                      vif.rx <= $urandom;
+                      datarx[i] = vif.rx;                                      
+                 end 
+                 
+                 
+                mbxds.put(datarx);
                 
-                @(posedge uart.uclk_tx);
-                uart.new_data <= 1'b0;
-                mbx_dts.put(trans.din_tx); // Send trans from DRV to SCO for ref
-                $display("[DRV]: DATA SENT : %0d", trans.din_tx);
-                wait(uart.done_tx); // Wait for done_tx event from SCO trigger
-                -> drvnext; // Trigger drvnext from DRV to GEN wait
-            end
-
-            else if (trans.oper == 1'b1) // Read data (receiving data)
-            begin
-                @(posedge uart.uclk_rx)
-                uart.rst <= 1'b0;
-                uart.rx <= 1'b0;
-                uart.new_data <= 1'b0;
-                @(posedge uart.uclk_rx) // Wait for next clk tick 
-            
-                for (int i = 0; i <= 7; i++)
-                begin
-                    @(posedge uart.uclk_rx); // Wait for 1 clk tick for system to gain next data
-                    uart.rx <= $urandom; // Create rand 8-bits data
-                    data_rx[i] = uart.rx; // Then read singly data to data_rx array
-                end
-
-                mbx_dts.put(data_rx); // Send data_rx readed to scoreboard as well
-
-                $display("[DRV] : DATA RECEIVED : %0d", data_rx);
-                wait(uart.done_rx);
-                uart.rx <= 1'b1;
-                -> drvnext;
-            end
-        end
-
-    endtask
-
+                $display("[DRV]: Data RCVD : %0d", datarx); 
+                wait(vif.donerx == 1'b1);
+                 vif.rx <= 1'b1;
+				->drvnext;
+                
+             end         
+  
+    end
+    
+  endtask
+  
 endclass
 
-
-//////////////////////////////////////////////////////////////////////////////////
-// Class monitor
+///////////////////////////////////////////////////////////////
+ 
 class monitor;
-
-    transaction trans;
-
-    bit [7:0] s_rx; // Sending data to scoreboard
-    bit [7:0] r_rx; // Receiving data from driver
-
-    virtual uart_inf uart; // Interface to gather data from DUT
-
-    mailbox #(bit [7:0]) mbx; // Received from driver (the 8-bit data)
-
-    function new(mailbox #(bit [7:0]) mbx)
-        this.mbx = mbx;
+ 
+  transaction tr;
+  
+  mailbox #(bit [7:0]) mbx;
+  
+  bit [7:0] srx; //////send
+  bit [7:0] rrx; ///// recv
+  
+ 
+  
+  virtual uart_if vif;
+  
+  
+  function new(mailbox #(bit [7:0]) mbx);
+    this.mbx = mbx;
     endfunction
-
-    task main();
-
-        forever
-        begin
-            
-            @(posedge uart.uclk_tx) // UART clock of TX
-            if ((uart.new_data == 1'b1) && (uart.rx == 1'b1)) // If new_data and rx enable
-            begin
-                @(posedge uart.uclk_tx); // Start collecting tx data in next clk tick
-                for (int i = 0; i <= 7; i++)
+  
+  task run();
+    
+    forever begin
+     
+       @(posedge vif.uclktx);
+      if ( (vif.newd== 1'b1) && (vif.rx == 1'b1) ) 
                 begin
-                    @(posedge uart.uclk_tx)
-                    s_rx[i] = uart.tx;
-                end
-
-                $display("[MON]: DATA SEND ON UART TX : %0d", s_rx);
-                // Wait for done_tx for the next transaction
-                @(posedge uart.uclk_tx);
-                mbx.put(s_rx); // Send to scoreboard
-            end
-
-            else if ((uart.new_data == 1'b0) && (uart.rx == 1'b0)) 
-            begin
-                wait(uart.done_rx); // Wait done_rx confirm completed
-                r_rx = uart.dout_rx; // Assign received data of rx to DUT
-                $display("[MON] : DATA RECEIVED FROM RX : %0d", r_rx);
-                @(posedge uart.uclk_tx); // Wait next clk tick to send data to scoreboard
-                mbx.put(r_rx);
-            end
-
-        end
-
-    endtask
-
-endclass
-
-
-//////////////////////////////////////////////////////////////////////////////////
-// Class scoreboard
-class scoreboard;
-
-    mailbox #(bit [7:0]) mbx_dts; // Driver to scoreboard
-    mailbox #(bit [7:0]) mbx_mts; // Monitor to scoreboard
-
-    bit [7:0] dts; // DRV to SCO data
-    bit [7:0] mts; // MON to SCO data
-
-    event sconext; // Trigger when complete
-
-    function new(mailbox #(bit [7:0]) mbx_dts, mailbox #(bit [7:0]) mbx_mts)
-        this.mbx_dts = mbx_dts;
-        this.mbx_mts = mbx_mts;
-    endfunction
-
-    task main()
-
-        forever
+                  
+                  @(posedge vif.uclktx); ////start collecting tx data from next clock tick
+                  
+              for(int i = 0; i<= 7; i++) 
+              begin 
+                    @(posedge vif.uclktx);
+                    srx[i] = vif.tx;
+                    
+              end
+ 
+                  
+                  $display("[MON] : DATA SEND on UART TX %0d", srx);
+                  
+                  //////////wait for done tx before proceeding next transaction                
+                @(posedge vif.uclktx); //
+                mbx.put(srx);
+                 
+               end
+      
+      else if ((vif.rx == 1'b0) && (vif.newd == 1'b0) ) 
         begin
-            
-            mbx_dts.get(dts);
-            mbx_mts.get(mts); // Wil connect to monitor and driver later on
-
-            $display("[SCO] : DRV : %0d : MON : %0d", dts, mts);
-            if(dts = mts)
-                $display("DATA MATCHED");
-            else
-                $display("DATA MISMATCHED");
-            $display("----------------------------------------------------------")
-
-            -> sconext;
-
-        end
-
-    endtask
-
+          wait(vif.donerx == 1);
+           rrx = vif.doutrx;     
+           $display("[MON] : DATA RCVD RX %0d", rrx);
+           @(posedge vif.uclktx); 
+           mbx.put(rrx);
+      end
+  end  
+endtask
+  
+ 
 endclass
-
-
-//////////////////////////////////////////////////////////////////////////////////
-// Class environment - containing all 4 modules
+ 
+////////////////////////////////////////////////////////
+ 
+class scoreboard;
+    
+  mailbox #(bit [7:0]) mbxds, mbxms;
+  
+  bit [7:0] ds;
+  bit [7:0] ms;
+  
+   event sconext;
+  
+  function new(mailbox #(bit [7:0]) mbxds, mailbox #(bit [7:0]) mbxms);
+    this.mbxds = mbxds;
+    this.mbxms = mbxms;
+  endfunction
+  
+  task run();
+    forever begin
+      
+      mbxds.get(ds);
+      mbxms.get(ms);
+      
+      $display("[SCO] : DRV : %0d MON : %0d", ds, ms);
+      if(ds == ms)
+        $display("DATA MATCHED");
+      else
+        $display("DATA MISMATCHED");
+      
+      $display("----------------------------------------");
+      
+     ->sconext; 
+    end
+  endtask
+  
+  
+endclass
+ 
+///////////////////////////////
+ 
 class environment;
-
+ 
     generator gen;
     driver drv;
     monitor mon;
-    scoreboard sco;
+    scoreboard sco; 
+  
+    event nextgd; ///gen -> drv
+  
+    event nextgs;  /// gen -> sco
+  
+  mailbox #(transaction) mbxgd; ///gen - drv
+  
+  mailbox #(bit [7:0]) mbxds; /// drv - sco
+    
+     
+  mailbox #(bit [7:0]) mbxms;  /// mon - sco
+  
+    virtual uart_if vif;
+ 
+  
+ function new(virtual uart_if vif);
+       
+    mbxgd = new();
+    mbxms = new();
+    mbxds = new();
+    
+    gen = new(mbxgd);
+    drv = new(mbxds,mbxgd);
 
-    event next_gtd; // GEN -> DRV when DRV confirms
-    event next_gts; // GEN -> SCo when SCO confirms
-
-    mailbox #(transaction) mbx_gtd; // GEN -> DRV
-    mailbox #(bit [7:0]) mbx_mts; // MON -> SCO
-    mailbox #(bit [7:0]) mbx_dts; // DRV -> SCO
-
-    virtual uart_inf uart;
-
-    function new(virtual uart_inf uart) // Connect designed DUT to environment DUT
-        mbx_gtd = new();
-        mbx_mts = new();
-        mbx_dts = new();
-
-        gen = new(mbx_gtd);
-        drv = new(mbx_dts, mbx_gtd); // dts used to send as ref to dtm, gtd to send as dts
-        mon = new(mbx_mts);
-        sco = new(mbx_dts, mbx_mts);
-        
-        this.uart = uart;
-        this.uart = drv.uart; // Driver interface connected to DUT interface
-        this.uart = mon.uart; // Same for monitor
-
-        gen.sconext = next_gts;
-        sco.sconext = next_gts; // Connect event of GEN to SCO
-
-        gen.drvnext = next_gtd;
-        drv.drvnext = next_gtd; // Connect event of GEN to DRV
-        
-    endfunction
-
-    task pre_test();
-        drv.reset();
-    endtask
-
-    task test();
-        fork
-            gen.main();
-            drv.main();
-            mon.main();
-            sco.main();
-        join_any
-    endtask
-
-    task post_test();
-        wait(gen.done.triggered) // Wait for all stimulies in generator completed
-        $finish(); // To finish the program
-    endtask
-
-    task run(); // Run all 3 stages of test
-        pre_test();
-        test();
-        post_test(); // No fork_join because the tasks run respectively
-    endtask
-
-
+    mon = new(mbxms);
+    sco = new(mbxds, mbxms);
+    
+    this.vif = vif;
+    drv.vif = this.vif;
+    mon.vif = this.vif;
+    
+    gen.sconext = nextgs;
+    sco.sconext = nextgs;
+    
+    gen.drvnext = nextgd;
+    drv.drvnext = nextgd;
+ 
+  endfunction
+  
+  task pre_test();
+    drv.reset();
+  endtask
+  
+  task test();
+  fork
+    gen.run();
+    drv.run();
+    mon.run();
+    sco.run();
+  join_any
+  endtask
+  
+  task post_test();
+    wait(gen.done.triggered);  
+    $finish();
+  endtask
+  
+  task run();
+    pre_test();
+    test();
+    post_test();
+  endtask
+    
 endclass
+ 
+///////////////////////////////////////////
 
-
-//////////////////////////////////////////////////////////////////////////
-// Top-level module with all modules
-module UART_tb;
-
-    uart_inf uart();
-
-    // Module instantiation (With data parameter for clk freq and baud rate)
-    UART #(1000000, 9600) uart_ins 
-    (
-        .clk(uart.clk),
-        .rst(uart.rst),
-        .tx(uart.tx),
-        .din_tx(uart.din_tx),
-        .done_tx(uart.done_tx),
-        .new_data(uart.new_data),
-        .rx(uart.tx),
-        .dout_rx(uart.dout_rx),
-        .done_rx(uart.done_rx),
-    );
-
-    // Clk signal generator
+module tb;
+    
+  uart_if vif();
+  
+  uart_top #(1000000, 9600) dut (vif.clk,vif.rst,vif.rx,vif.dintx,vif.newd,vif.tx,vif.doutrx,vif.donetx, vif.donerx);
+  
+  
+  
     initial begin
-        uart.clk <= 0;
+      vif.clk <= 0;
     end
-
-    always #10 uart.clk <= ~uart.clk; // 10ns = half period clk
-
+    
+    always #10 vif.clk <= ~vif.clk;
+    
     environment env;
-
+    
+    
+    
     initial begin
-        env = new(uart);
-        env.gen.count = 17; // 17 stimulies
-        env.run();
+      env = new(vif);
+      env.gen.count = 5;
+      env.run();
     end
-
+      
+    
     initial begin
-        $dumpfiles("dump.vcd");
-        $dumpvars;
+      $dumpfile("dump.vcd");
+      $dumpvars;
     end
-
-    // Assign uclk of interface to DUT sub-module TX/RX uclk
-    assign uart.uclk_tx = uart_ins.uart_tx.uclk;
-    assign uart.uclk_rx = uart_ins.uart_rx.uclk; 
-
+   
+    assign vif.uclktx = dut.utx.uclk;
+    assign vif.uclkrx = dut.rtx.uclk;
+    
 endmodule
