@@ -1,76 +1,7 @@
-//-----------------------------UART_tb.sv---------------------//
-// Digital RTL Verification of UART\
+//--------------------------UART_tb.sv----------------//
+// Digital RTL Verification of UART
 
-`timescale 1ns/1ps
-
-////////////////////////////////////////////////
-// Data transaction class
 class transaction;
-
-    typedef enum bit {write = 1'b0, read 1'b1} operation_type; // %0s scanf
-
-    randc operation_type oper; // Should not replicate
-
-    bit rx;
-    bit [7:0] dout_rx;
-    bit done_rx;
-
-    bit tx;
-    bit done_tx;
-    rand bit [7:0] din_tx; // Random data sent into tx pin
-    bit new_data;
-
-    // Deep copy
-    function transaction copy();
-        copy = new();
-        copy.rx = this.rx;
-        copy.oper = this.oper;
-        copy.dout_rx = this.dout_rx;
-        copy.done_rx = this.done_rx;
-        copy.tx = this.tx;
-        copy.done_tx = this.done_tx;
-        copy.din_tx = this.din_tx;
-        copy.new_data = this.new_data
-    endfunction
-
-    // // Display
-    // task transaction display(tag, din_tx, dout_rx);
-    //     $display("[%0s] : DATA TX : %0b : DATA RX : %0b", tag, din_tx, dout_rx);
-    // endtask
-
-endclass
-
-
-// GEN: generator; DRV: driver; MON: monitor; SCO: scoreboard
-////////////////////////////////////////////////
-// Classes in verification environment
-// If data mismatched then considered clk tick issues
-
-// Class generator
-class generator;
-
-    transactrion trans;
-
-    mailbox #(transaction) mbx; // Send from GEN to DRV
-
-    event done; // Trigger when all stimulies complete
-
-    int count = 0; // The number of stimulies (user-referenced)
-
-    event drvnext; // Wait for driver confirm next stimuli
-    event sconext; // Wait for scoreboard confirm finish
-
-    function new(mailbox #(transaction) mbx);
-        this.mbx = mbx; // Mailbox synchronize
-        trans = new(); // New object every stimuli
-    endfunction
-
-    task main(); // Main task of scoreboard
-
-        repeat(count) // Repeat operation within number of stimulies
-        begin
-            assert(trans.randomize) else $display("Randomization failed");
-            mbx.put(trans.copy)class transaction;
   
   typedef enum bit  {write = 1'b0 , read = 1'b1} oper_type;
   
@@ -103,8 +34,9 @@ class generator;
   
 endclass
  
-/////////////////////////////////////////////////
-            
+////////////////////////////////////////////
+ 
+ 
 class generator;
   
  transaction tr;
@@ -138,11 +70,13 @@ class generator;
     -> done;
   endtask
   
+  
 endclass
  
 /////////////////////////////////////////////////////////
  
 class driver;
+  
   
   virtual uart_if vif;
   
@@ -162,10 +96,15 @@ class driver;
   bit [7:0] datarx;  ///data rcvd during read
   
   
+  
+  
+  
   function new(mailbox #(bit [7:0]) mbxds, mailbox #(transaction) mbx);
     this.mbx = mbx;
     this.mbxds = mbxds;
    endfunction
+  
+  
   
   task reset();
     vif.rst <= 1'b1;
@@ -179,6 +118,8 @@ class driver;
     $display("[DRV] : RESET DONE");
     $display("----------------------------------------");
   endtask
+  
+  
   
   task run();
   
@@ -226,16 +167,19 @@ class driver;
                 wait(vif.donerx == 1'b1);
                  vif.rx <= 1'b1;
 				->drvnext;
-                
+                 
+ 
              end         
   
+       
+      
     end
     
   endtask
   
 endclass
-
-///////////////////////////////////////////////////////////////
+ 
+//////////////////////////////////////
  
 class monitor;
  
@@ -297,8 +241,8 @@ endclass
  
 ////////////////////////////////////////////////////////
  
+ 
 class scoreboard;
-    
   mailbox #(bit [7:0]) mbxds, mbxms;
   
   bit [7:0] ds;
@@ -341,6 +285,8 @@ class environment;
     monitor mon;
     scoreboard sco; 
   
+    
+  
     event nextgd; ///gen -> drv
   
     event nextgs;  /// gen -> sco
@@ -355,7 +301,7 @@ class environment;
     virtual uart_if vif;
  
   
- function new(virtual uart_if vif);
+  function new(virtual uart_if vif);
        
     mbxgd = new();
     mbxms = new();
@@ -363,7 +309,9 @@ class environment;
     
     gen = new(mbxgd);
     drv = new(mbxds,mbxgd);
-
+    
+    
+ 
     mon = new(mbxms);
     sco = new(mbxds, mbxms);
     
@@ -402,11 +350,14 @@ class environment;
     test();
     post_test();
   endtask
-    
+  
+  
+  
 endclass
  
 ///////////////////////////////////////////
-
+ 
+ 
 module tb;
     
   uart_if vif();
@@ -437,7 +388,11 @@ module tb;
       $dumpvars;
     end
    
-    assign vif.uclktx = dut.utx.uclk;
-    assign vif.uclkrx = dut.rtx.uclk;
+  assign vif.uclktx = dut.utx.uclk;
+  assign vif.uclkrx = dut.rtx.uclk;
     
-endmodule
+  endmodule
+ 
+ 
+ 
+////////////////////////////////////////
