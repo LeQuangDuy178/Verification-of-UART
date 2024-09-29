@@ -53,7 +53,8 @@ endmodule
  
  
 //////////////////////////////////////////////////////////////////
- 
+// TXD transfer 8-bit data serially into 1-bit signal and transfer it to target device
+
 module uarttx
 #(
 parameter clk_freq = 1000000,
@@ -147,10 +148,8 @@ endmodule
  
  
 ////////////////////////////////////////////////////////////////////
- 
- 
- 
- 
+// RXD receives serial 1-bit data simultaneously and packaging them to single 8-bit data 
+
 module uartrx
 #(
 parameter clk_freq = 1000000, //MHz
@@ -216,7 +215,7 @@ enum bit[1:0] {idle = 2'b00, start = 2'b01} state;
        if(counts <= 7)
       begin
      counts <= counts + 1;
-     rxdata <= {rx, rxdata[7:1]};
+          rxdata <= {rx, rxdata[7:1]}; // LSB data first 
      end
      else
      begin
